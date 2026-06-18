@@ -106,13 +106,13 @@ impl FilterRegistry {
 // -----------------------------------------------------------------------------
 
 /// Register all built-in HTTP filter factories.
-#[expect(clippy::too_many_lines, reason = "one line per filter, will grow")]
+#[allow(clippy::too_many_lines, reason = "one line per filter, will grow")]
 fn register_http_builtins(factories: &mut HashMap<String, FilterFactory>) {
     use crate::builtins::{
         A2aFilter, AccessLogFilter, CircuitBreakerFilter, CompressionFilter, CorsFilter, CredentialInjectionFilter,
         CsrfFilter, ForwardedHeadersFilter, GrpcDetectionFilter, HeaderFilter, IpAclFilter, JsonBodyFieldFilter,
-        JsonRpcFilter, McpFilter, PathRewriteFilter, RateLimitFilter, RedirectFilter, RequestIdFilter,
-        StaticResponseFilter, TimeoutFilter, UrlRewriteFilter,
+        JsonRpcFilter, McpFilter, PathRewriteFilter, PrintHumanMessageFilter, RateLimitFilter, RedirectFilter,
+        RequestIdFilter, StaticResponseFilter, TimeoutFilter, UrlRewriteFilter,
     };
 
     register_http(factories, "a2a", A2aFilter::from_config);
@@ -133,6 +133,7 @@ fn register_http_builtins(factories: &mut HashMap<String, FilterFactory>) {
     register_http(factories, "ip_acl", IpAclFilter::from_config);
     register_http(factories, "load_balancer", crate::LoadBalancerFilter::from_config);
     register_http(factories, "path_rewrite", PathRewriteFilter::from_config);
+    register_http(factories, "print_human_message", PrintHumanMessageFilter::from_config);
     register_http(factories, "rate_limit", RateLimitFilter::from_config);
     register_http(factories, "redirect", RedirectFilter::from_config);
     register_http(factories, "request_id", RequestIdFilter::from_config);
@@ -182,7 +183,7 @@ fn register_http_builtins(factories: &mut HashMap<String, FilterFactory>) {
 }
 
 /// Register a single HTTP filter factory by name.
-#[expect(clippy::type_complexity, reason = "complex function pointer")]
+#[allow(clippy::type_complexity, reason = "complex function pointer")]
 fn register_http(
     factories: &mut HashMap<String, FilterFactory>,
     name: &str,
@@ -208,7 +209,7 @@ fn register_tcp_builtins(factories: &mut HashMap<String, FilterFactory>) {
 }
 
 /// Register a single TCP filter factory by name.
-#[expect(clippy::type_complexity, reason = "complex function pointer")]
+#[allow(clippy::type_complexity, reason = "complex function pointer")]
 fn register_tcp(
     factories: &mut HashMap<String, FilterFactory>,
     name: &str,
@@ -223,7 +224,6 @@ fn register_tcp(
 // -----------------------------------------------------------------------------
 
 #[cfg(test)]
-#[expect(clippy::allow_attributes, reason = "blanket test suppressions")]
 #[allow(
     clippy::unwrap_used,
     clippy::expect_used,

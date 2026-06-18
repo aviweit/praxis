@@ -1,0 +1,59 @@
+# Praxis Configuration for LiteLLM OpenAI Endpoint
+#
+# This configuration sets up Praxis to:
+# 1. Print human messages from chat requests to console
+# 2. Forward requests to LiteLLM's OpenAI-compatible endpoint
+#
+# LiteLLM will handle authentication using the OPENAI_API_KEY environment
+# variable that you export before starting LiteLLM itself.
+#
+# Before running:
+#   1. Start LiteLLM with: export OPENAI_API_KEY="your-key" && litellm --config your-config.yaml
+#   2. Start Praxis with: ./target/release/praxis --config config-litellm.yaml
+#
+# Note: Update the endpoint address below to match your LiteLLM server
+# Format: hostname:port (no http:// prefix)
+
+listeners:
+  - name: litellm-gateway
+    address: "127.0.0.1:8080"
+    filter_chains:
+      - observability
+      - routing
+      - credentials
+
+filter_chains:
+  - name: observability
+    filters:
+      # Custom filter to print human messages to console
+      - filter: print_human_message
+
+  - name: routing
+    filters:
+      # Route all requests to LiteLLM cluster
+      - filter: router
+        routes:
+          - path_prefix: "/"
+            cluster: "litellm"
+      
+      # Load balancer to connect to LiteLLM endpoint
+      - filter: load_balancer
+        clusters:
+          - name: "litellm"
+            endpoints:
+              # Update this to match your LiteLLM endpoint
+              # Format: hostname:port (no http:// prefix)
+              - "my-rits-proxy-url:4000"
+
+  - name: credentials
+    filters:
+      # Inject API key from OPENAI_API_KEY environment variable
+      # This is required for LiteLLM to authenticate with the backend
+      - filter: credential_injection
+        clusters:
+          - name: litellm
+            header: Authorization
+            env_var: OPENAI_API_KEY
+            header_prefix: "Bearer "
+
+# Made with Bob
