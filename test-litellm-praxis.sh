@@ -1,20 +1,15 @@
 #!/bin/bash
 # Test script for Praxis + LiteLLM setup
+#
+# NOTE: The API key should be set in Praxis's environment when starting the server.
+# Praxis will inject the Authorization header automatically via credential_injection filter.
 
 set -e
 
-# Check if OPENAI_API_KEY is set
-if [ -z "$OPENAI_API_KEY" ]; then
-    echo "ERROR: OPENAI_API_KEY environment variable is not set" >&2
-    echo "Please run: export OPENAI_API_KEY=your-api-key" >&2
-    exit 1
-fi
-
 # Send status messages to stderr so stdout is pure JSON
 echo "Testing Praxis with LiteLLM endpoint..." >&2
-echo "✓ OPENAI_API_KEY is set" >&2
 echo "Sending test request to Praxis at http://localhost:8080/v1/chat/completions" >&2
-echo "(Praxis will inject Authorization header and forward to LiteLLM)" >&2
+echo "(Praxis will inject Authorization header from its environment and forward to LiteLLM)" >&2
 echo "" >&2
 
 curl -X POST http://localhost:8080/v1/chat/completions \
