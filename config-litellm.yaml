@@ -43,7 +43,7 @@ filter_chains:
             endpoints:
               # Update this to match your LiteLLM endpoint
               # Format: hostname:port (no http:// prefix)
-              - "my-rits-proxy-url:4000"
+              - "my-litellm-proxy-url:4000"
 
   - name: credentials
     filters:
