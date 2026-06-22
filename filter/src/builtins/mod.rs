@@ -31,12 +31,13 @@ pub use http::ResponseStoreRegistry;
 #[cfg(feature = "ai-inference")]
 pub use http::ResponsesFormatFilter;
 pub use http::{
-    A2aFilter, AccessLogFilter, CircuitBreakerFilter, CompressionFilter, ContainsValue, CorsFilter,
-    CredentialInjectionFilter, CsrfFilter, DisallowedOriginMode, ForwardedHeadersFilter, GrpcDetectionFilter,
-    GuardrailsAction, GuardrailsFilter, HeaderFilter, IpAclFilter, JsonBodyFieldFilter, JsonRpcFilter,
-    LoadBalancerFilter, McpFilter, PathRewriteFilter, PiiKind, RateLimitFilter, RateLimitMode, RedirectFilter,
-    RedirectStatus, RequestIdFilter, RouterFilter, RuleTargetKind, StaticResponseFilter, TimeoutFilter,
-    TokenUsageHeadersFilter, UrlRewriteFilter, has_dot_dot_traversal, normalize_rewritten_path,
+    A2aFilter, AccessLogFilter, CircuitBreakerFilter, CompressionFilter, ContextExtractorFilter, ContainsValue,
+    CorsFilter, CredentialInjectionFilter, CsrfFilter, DisallowedOriginMode, ForwardedHeadersFilter,
+    GrpcDetectionFilter, GuardrailsAction, GuardrailsFilter, HeaderFilter, IpAclFilter, JsonBodyFieldFilter,
+    JsonRpcFilter, LoadBalancerFilter, McpFilter, PathRewriteFilter, PiiKind, RateLimitFilter, RateLimitMode,
+    RedirectFilter, RedirectStatus, RequestIdFilter, RouterFilter, RuleTargetKind, SkillResolverFilter,
+    StaticResponseFilter, TimeoutFilter, TokenUsageHeadersFilter, UrlRewriteFilter, VmcpManagerFilter,
+    has_dot_dot_traversal, normalize_rewritten_path,
 };
 #[cfg(feature = "ai-inference")]
 pub use http::{TokenUsage, TokenUsageProvider, extract_token_usage};

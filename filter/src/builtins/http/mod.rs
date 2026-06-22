@@ -4,9 +4,11 @@
 //! HTTP protocol filters, organized by category.
 
 pub(crate) mod ai;
+mod context_extractor;
 mod observability;
 pub(crate) mod payload_processing;
 mod security;
+mod skillberry;
 mod traffic_management;
 mod transformation;
 pub(crate) mod value_safety;
@@ -38,12 +40,14 @@ pub use ai::ResponsesFormatFilter;
 #[cfg(feature = "ai-inference")]
 pub use ai::token_usage::{TokenUsage, TokenUsageProvider, extract_token_usage};
 pub use ai::{A2aFilter, JsonRpcFilter, McpFilter, TokenUsageHeadersFilter};
+pub use context_extractor::ContextExtractorFilter;
 pub use observability::{AccessLogFilter, RequestIdFilter};
 pub use payload_processing::{CompressionFilter, JsonBodyFieldFilter};
 pub use security::{
     ContainsValue, CorsFilter, CredentialInjectionFilter, CsrfFilter, DisallowedOriginMode, ForwardedHeadersFilter,
     GuardrailsAction, GuardrailsFilter, IpAclFilter, PiiKind, RuleTargetKind,
 };
+pub use skillberry::{SkillResolverFilter, VmcpManagerFilter};
 pub use traffic_management::{
     CircuitBreakerFilter, GrpcDetectionFilter, LoadBalancerFilter, RateLimitFilter, RateLimitMode, RedirectFilter,
     RedirectStatus, RouterFilter, StaticResponseFilter, TimeoutFilter,

@@ -1,0 +1,98 @@
+# Phase 2: Skillberry Store Integration Example
+# 
+# This configuration demonstrates the integration of Praxis with skillberry-store
+# to resolve skills and create VMCP servers for AI agent workflows.
+#
+# Prerequisites:
+# - skillberry-store running at http://localhost:8000
+# - Environment variables set:
+#   - SKILL_UUID or SKILL_NAME: Identifies the skill to use
+#   - SKILLBERRY_CONTEXT_ENV_ID: Environment/session identifier
+#
+# Filter Flow:
+# 1. context_extractor: Extracts env_id from headers
+# 2. skill_resolver: Resolves skill UUID from environment variables
+# 3. vmcp_manager: Creates VMCP server with context and skill
+# 4. [Future: MCP tool invocation, OpenAI request/response handling]
+
+listeners:
+  - name: skillberry_proxy
+    address: 0.0.0.0:8080
+    filter_chains:
+      - skillberry_chain
+
+filter_chains:
+  - name: skillberry_chain
+    filters:
+      # Step 1: Extract context from headers
+      - filter: context_extractor
+        headers:
+          - name: x-skillberry-env-id
+            metadata_key: env_id
+            default: "default-env"
+            required: true
+            pattern: "^[a-zA-Z0-9_-]+$"
+            max_length: 64
+          
+          - name: x-skillberry-user-id
+            metadata_key: user_id
+            default: "anonymous"
+            required: false
+            pattern: "^[a-zA-Z0-9_-]+$"
+            max_length: 64
+          
+          - name: x-skillberry-session-id
+            metadata_key: session_id
+            required: false
+            pattern: "^[a-zA-Z0-9_-]+$"
+            max_length: 128
+      
+      # Step 2: Resolve skill UUID from environment variables
+      - filter: skill_resolver
+        store_base_url: "http://localhost:8000"
+        skill_uuid_env: "SKILL_UUID"
+        skill_name_env: "SKILL_NAME"
+        timeout_ms: 5000
+      
+      # Step 3: Create VMCP server with context
+      - filter: vmcp_manager
+        store_base_url: "http://localhost:8000"
+        vmcp_name_template: "vmcp-{env_id}-{timestamp}"
+        timeout_ms: 10000
+        always_create: true
+        cleanup_on_error: false
+      
+      # Future filters (Phase 3+):
+      # - filter: mcp_tool_invoker
+      # - filter: openai_request_parser
+      # - filter: prompt_enrich
+      
+      # Router: Route to backend based on path
+      - filter: router
+        routes:
+          - path_prefix: "/v1/chat/completions"
+            cluster: openai_backend
+          - path_prefix: "/"
+            cluster: openai_backend
+      
+      # Load balancer
+      - filter: load_balancer
+        clusters:
+          - name: openai_backend
+            endpoints:
+              - "localhost:4000"
+            connection_timeout_ms: 5000
+            read_timeout_ms: 60000
+            write_timeout_ms: 60000
+            health_check:
+              type: http
+              path: /health
+              interval_ms: 10000
+              timeout_ms: 3000
+              unhealthy_threshold: 3
+              healthy_threshold: 2
+
+# Runtime configuration
+runtime:
+  threads: 4
+  max_connections: 10000

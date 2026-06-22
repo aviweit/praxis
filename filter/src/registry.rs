@@ -109,16 +109,18 @@ impl FilterRegistry {
 #[expect(clippy::too_many_lines, reason = "one line per filter, will grow")]
 fn register_http_builtins(factories: &mut HashMap<String, FilterFactory>) {
     use crate::builtins::{
-        A2aFilter, AccessLogFilter, CircuitBreakerFilter, CompressionFilter, CorsFilter, CredentialInjectionFilter,
-        CsrfFilter, ForwardedHeadersFilter, GrpcDetectionFilter, HeaderFilter, IpAclFilter, JsonBodyFieldFilter,
-        JsonRpcFilter, McpFilter, PathRewriteFilter, RateLimitFilter, RedirectFilter, RequestIdFilter,
-        StaticResponseFilter, TimeoutFilter, TokenUsageHeadersFilter, UrlRewriteFilter,
+        A2aFilter, AccessLogFilter, CircuitBreakerFilter, CompressionFilter, ContextExtractorFilter, CorsFilter,
+        CredentialInjectionFilter, CsrfFilter, ForwardedHeadersFilter, GrpcDetectionFilter, HeaderFilter, IpAclFilter,
+        JsonBodyFieldFilter, JsonRpcFilter, McpFilter, PathRewriteFilter, RateLimitFilter, RedirectFilter,
+        RequestIdFilter, SkillResolverFilter, StaticResponseFilter, TimeoutFilter, TokenUsageHeadersFilter,
+        UrlRewriteFilter, VmcpManagerFilter,
     };
 
     register_http(factories, "a2a", A2aFilter::from_config);
     register_http(factories, "access_log", AccessLogFilter::from_config);
     register_http(factories, "circuit_breaker", CircuitBreakerFilter::from_config);
     register_http(factories, "compression", CompressionFilter::from_config);
+    register_http(factories, "context_extractor", ContextExtractorFilter::from_config);
     register_http(factories, "cors", CorsFilter::from_config);
     register_http(factories, "csrf", CsrfFilter::from_config);
     register_http(
@@ -137,10 +139,12 @@ fn register_http_builtins(factories: &mut HashMap<String, FilterFactory>) {
     register_http(factories, "redirect", RedirectFilter::from_config);
     register_http(factories, "request_id", RequestIdFilter::from_config);
     register_http(factories, "router", crate::RouterFilter::from_config);
+    register_http(factories, "skill_resolver", SkillResolverFilter::from_config);
     register_http(factories, "static_response", StaticResponseFilter::from_config);
     register_http(factories, "timeout", TimeoutFilter::from_config);
     register_http(factories, "token_usage_headers", TokenUsageHeadersFilter::from_config);
     register_http(factories, "url_rewrite", UrlRewriteFilter::from_config);
+    register_http(factories, "vmcp_manager", VmcpManagerFilter::from_config);
     register_http(factories, "json_body_field", JsonBodyFieldFilter::from_config);
     register_http(factories, "json_rpc", JsonRpcFilter::from_config);
     register_http(factories, "mcp", McpFilter::from_config);
