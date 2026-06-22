@@ -1,35 +1,34 @@
-# Phase 2: Skillberry Store Integration & VMCP Server Management
+# Phase 2: Skillberry Store Integration & LLM Proxy
 
-**Status**: Design Phase  
-**Dependencies**: Phase 1 (context_extractor filter)  
-**Timeline**: 2-3 weeks
+**Status**: Implemented
+**Dependencies**: Phase 1 (context_extractor filter)
 
 ## Overview
 
-Phase 2 integrates Praxis with the Skillberry Store to:
+Phase 2 integrates Praxis with Skillberry Store and LiteLLM to create a complete AI agent proxy:
 1. Resolve skill UUIDs from environment variables or skill names
 2. Create/manage Virtual MCP (VMCP) servers
 3. Pass context (env_id) to VMCP servers
-4. Prepare for MCP tool invocation in Phase 3
+4. Proxy requests to LLM backend (via LiteLLM) with credential injection
 
 ## Architecture
 
 ```
 ┌─────────────────────────────────────────────────────────────────┐
 │                     Incoming Request                             │
-│              /v1/chat/completions + Headers                      │
+│         /v1/chat/completions + Authorization Header              │
 └────────────────────────────┬────────────────────────────────────┘
                              │
                              ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  context_extractor Filter (Phase 1)                             │
-│  - Extracts env_id from headers                                 │
+│  context_extractor Filter                                        │
+│  - Extracts env_id from x-skillberry-env-id header             │
 │  - Stores in ctx.filter_metadata["env_id"]                      │
 └────────────────────────────┬────────────────────────────────────┘
                              │
                              ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  skill_resolver Filter (Phase 2 - NEW)                          │
+│  skill_resolver Filter                                           │
 │  1. Read SKILL_UUID or SKILL_NAME from env vars                 │
 │  2. If SKILL_NAME: HTTP GET to skillberry-store                 │
 │     GET /skills/{skill_name} → returns skill with UUID          │
@@ -38,12 +37,11 @@ Phase 2 integrates Praxis with the Skillberry Store to:
                              │
                              ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  vmcp_manager Filter (Phase 2 - NEW)                            │
+│  vmcp_manager Filter                                             │
 │  1. Get env_id from ctx.filter_metadata                         │
 │  2. Get skill_uuid from ctx.filter_metadata (optional)          │
 │  3. HTTP POST to skillberry-store to create VMCP server:        │
-│     POST /vmcp-servers                                          │
-│     Body: {name, skill_uuid, description}                       │
+│     POST /vmcp_servers/ (query params: name, description, skill_uuid) │
 │     Headers: skillberry-context-env-id: {env_id}                │
 │  4. Store vmcp_port in ctx.filter_metadata["vmcp_port"]         │
 │  5. Store vmcp_uuid in ctx.filter_metadata["vmcp_uuid"]         │
@@ -51,11 +49,102 @@ Phase 2 integrates Praxis with the Skillberry Store to:
                              │
                              ▼
 ┌─────────────────────────────────────────────────────────────────┐
-│  [Phase 3: MCP Tool Invocation]                                 │
-│  - Use vmcp_port to connect to VMCP server                      │
-│  - Invoke MCP tools based on LLM tool calls                     │
+│  router + load_balancer                                         │
+│  - Routes all paths (/) to llm_backend cluster                  │
+│  - Forwards request as-is to LiteLLM backend                    │
+│  - Client Authorization header passed through                    │
+│  - Backend: localhost:4000 (configurable)                       │
+└─────────────────────────────────────────────────────────────────┘
+                             │
+                             ▼
+┌─────────────────────────────────────────────────────────────────┐
+│                    LiteLLM Backend                               │
+│  - Receives request with Authorization header                   │
+│  - Routes to appropriate LLM provider based on model name       │
+│  - Returns response to Praxis                                   │
 └─────────────────────────────────────────────────────────────────┘
 ```
+
+**Key Changes from Original Design**:
+- **No credential_injection filter**: Clients send their own `Authorization: Bearer` header
+- **Simplified routing**: Single route matches all paths (`/`)
+- **Pass-through proxy**: Request forwarded as-is to LiteLLM backend
+- **Client-side authentication**: API key management handled by client
+
+## LLM Backend Integration
+
+Phase 2 uses **LiteLLM** as the LLM backend, which provides:
+- Unified OpenAI-compatible API for 100+ LLM providers
+- Support for OpenAI, Anthropic, Azure, AWS Bedrock, Google, etc.
+- Automatic retry logic and fallback handling
+- Cost tracking and usage analytics
+
+### Environment Variables
+
+```bash
+# LLM Configuration
+export OPENAI_BASE_URL="http://localhost:4000"  # LiteLLM proxy endpoint
+export OPENAI_API_KEY="your-api-key"            # Your LLM provider API key
+
+# Skillberry Store Configuration
+export SKILL_UUID="869ff6a0-acb4-4759-a065-4cb2ae43a5f3"  # OR
+export SKILL_NAME="flight_reservation_management"
+```
+
+### Starting LiteLLM
+
+```bash
+# Install LiteLLM
+pip install litellm[proxy]
+
+# Start LiteLLM proxy (example with OpenAI)
+litellm --model gpt-4 --port 4000
+
+# Or with config file for multiple models
+litellm --config config-litellm.yaml --port 4000
+```
+
+## Usage
+
+### Python Client with LiteLLM Package
+
+```python
+#!/usr/bin/env python3
+"""
+Test Praxis Phase 2 with LiteLLM package
+Sends request through Praxis proxy to LiteLLM backend
+"""
+import os
+from litellm import completion
+
+# Configure to use Praxis proxy
+os.environ["OPENAI_API_BASE"] = "http://localhost:8080/v1"
+os.environ["OPENAI_API_KEY"] = "your-api-key-here"
+
+# Make request through Praxis
+response = completion(
+    model="openai/rits/openai/gpt-oss-120b",
+    messages=[
+        {"role": "user", "content": "Hello, how are you?"}
+    ],
+    extra_headers={
+        "x-skillberry-env-id": "test-env-123"
+    }
+)
+
+print(response.choices[0].message.content)
+```
+
+**Installation**:
+```bash
+pip install litellm
+```
+
+**Run**:
+```bash
+python test_praxis_phase2.py
+```
+
 
 ## Skillberry Store HTTP API
 

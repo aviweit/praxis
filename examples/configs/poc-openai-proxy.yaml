@@ -1,0 +1,74 @@
+# POC: Basic OpenAI/LiteLLM Proxy with Praxis
+#
+# This is a minimal proof-of-concept that demonstrates:
+# 1. Receiving OpenAI-compatible requests
+# 2. Logging human messages to console (via print_human_message filter)
+# 3. Forwarding to LiteLLM/OpenAI backend
+# 4. Injecting API credentials from environment variables
+#
+# SETUP INSTRUCTIONS:
+# ===================
+#
+# 1. Set your API key environment variable:
+#    export OPENAI_API_KEY="your-api-key-here"
+#
+# 2. Edit the endpoint below (line 42) to match your LiteLLM server:
+#    - Format: "hostname:port" (no http:// prefix)
+#    - Example: "localhost:4000" or "my-server.com:4000"
+#    - For HTTPS on port 443, Praxis will automatically use TLS
+#
+# 3. Start Praxis:
+#    cargo run --release -- --config examples/configs/poc-openai-proxy.yaml
+#
+# 4. Test with curl:
+#    curl -X POST http://localhost:8080/v1/chat/completions \
+#      -H "Content-Type: application/json" \
+#      -d '{
+#        "model": "gpt-3.5-turbo",
+#        "messages": [{"role": "user", "content": "Hello!"}]
+#      }'
+#
+# The human message will be printed to the Praxis console.
+
+listeners:
+  - name: openai-gateway
+    address: "0.0.0.0:8080"
+    filter_chains:
+      - observability
+      - routing
+      - credentials
+
+filter_chains:
+  # Log human messages to console
+  - name: observability
+    filters:
+      - filter: print_human_message
+
+  # Route to OpenAI/LiteLLM backend
+  - name: routing
+    filters:
+      - filter: router
+        routes:
+          - path_prefix: "/v1/"
+            cluster: openai
+      - filter: load_balancer
+        clusters:
+          - name: openai
+            # ⚠️ EDIT THIS: Replace with your LiteLLM endpoint
+            # Format: "hostname:port" (no http:// prefix)
+            # Examples:
+            #   - "localhost:4000"
+            #   - "my-litellm-server.com:4000"
+            #   - "api.openai.com:443" (for direct OpenAI)
+            endpoints:
+              - "REPLACE_WITH_YOUR_ENDPOINT"  # e.g., "localhost:4000"
+
+  # Inject API credentials from environment variable
+  - name: credentials
+    filters:
+      - filter: credential_injection
+        clusters:
+          - name: openai
+            header: Authorization
+            env_var: OPENAI_API_KEY
+            header_prefix: "Bearer "
