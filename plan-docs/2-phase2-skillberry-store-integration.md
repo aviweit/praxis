@@ -43,8 +43,11 @@ Phase 2 integrates Praxis with Skillberry Store and LiteLLM to create a complete
 │  3. HTTP POST to skillberry-store to create VMCP server:        │
 │     POST /vmcp_servers/ (query params: name, description, skill_uuid) │
 │     Headers: skillberry-context-env-id: {env_id}                │
-│  4. Store vmcp_port in ctx.filter_metadata["vmcp_port"]         │
-│  5. Store vmcp_uuid in ctx.filter_metadata["vmcp_uuid"]         │
+│  4. Store in ctx.filter_metadata:                               │
+│     - vmcp_uuid: VMCP server UUID                               │
+│     - vmcp_name: VMCP server name                               │
+│     - vmcp_port: VMCP server port (as string)                   │
+│     - vmcp_tools_count: Number of tools (optional)              │
 └────────────────────────────┬────────────────────────────────────┘
                              │
                              ▼
