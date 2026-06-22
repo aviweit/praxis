@@ -57,7 +57,7 @@ filter_chains:
       # Step 3: Create VMCP server with context
       - filter: vmcp_manager
         store_base_url: "http://localhost:8000"
-        vmcp_name_template: "vmcp-{env_id}-{timestamp}"
+        vmcp_name_template: "vmcp-{env_id}"
         timeout_ms: 10000
         always_create: true
         cleanup_on_error: false
