@@ -82,44 +82,37 @@ Phase 2 uses **LiteLLM** as the LLM backend, which provides:
 - Automatic retry logic and fallback handling
 - Cost tracking and usage analytics
 
-### Environment Variables
+## Usage
+
+### Starting Praxis
 
 ```bash
-# LLM Configuration
-export OPENAI_BASE_URL="http://localhost:4000"  # LiteLLM proxy endpoint
-export OPENAI_API_KEY="your-api-key"            # Your LLM provider API key
+# Build Praxis
+cargo build --release
 
-# Skillberry Store Configuration
-export SKILL_UUID="869ff6a0-acb4-4759-a065-4cb2ae43a5f3"  # OR
+# Set environment variables
 export SKILL_NAME="flight_reservation_management"
-```
 
-## Usage
+# Start Praxis with Phase 2 configuration
+./target/release/praxis -c examples/configs/ai/phase2-skillberry-integration.yaml
+```
 
 ### Python Client with LiteLLM Package
 
 ```python
 #!/usr/bin/env python3
-"""
-Test Praxis Phase 2 with LiteLLM package
-Sends request through Praxis proxy to LiteLLM backend
-"""
 import os
 from litellm import completion
 
+# Set OPENAI_API_KEY with your API key
+
 # Configure to use Praxis proxy
 os.environ["OPENAI_API_BASE"] = "http://localhost:8080/v1"
-os.environ["OPENAI_API_KEY"] = "your-api-key-here"
 
-# Make request through Praxis
 response = completion(
     model="openai/rits/openai/gpt-oss-120b",
-    messages=[
-        {"role": "user", "content": "Hello, how are you?"}
-    ],
-    extra_headers={
-        "x-skillberry-env-id": "test-env-123"
-    }
+    messages=[{"role": "user", "content": "Hello, how are you?"}],
+    extra_headers={"x-skillberry-env-id": "test-env-123"}
 )
 
 print(response.choices[0].message.content)
@@ -132,6 +125,7 @@ pip install litellm
 
 **Run**:
 ```bash
+export OPENAI_API_KEY="your-api-key"  # Set your LLM provider API key
 python test_praxis_phase2.py
 ```
 
