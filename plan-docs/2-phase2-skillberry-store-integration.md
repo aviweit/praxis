@@ -91,19 +91,6 @@ export SKILL_UUID="869ff6a0-acb4-4759-a065-4cb2ae43a5f3"  # OR
 export SKILL_NAME="flight_reservation_management"
 ```
 
-### Starting LiteLLM
-
-```bash
-# Install LiteLLM
-pip install litellm[proxy]
-
-# Start LiteLLM proxy (example with OpenAI)
-litellm --model gpt-4 --port 4000
-
-# Or with config file for multiple models
-litellm --config config-litellm.yaml --port 4000
-```
-
 ## Usage
 
 ### Python Client with LiteLLM Package
