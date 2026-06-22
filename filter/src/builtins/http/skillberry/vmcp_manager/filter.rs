@@ -7,7 +7,7 @@ use std::time::Duration;
 
 use async_trait::async_trait;
 use reqwest::Client;
-use serde::{Deserialize, Serialize};
+use serde::Deserialize;
 
 use super::config::VmcpManagerConfig;
 use crate::{
@@ -17,19 +17,10 @@ use crate::{
 };
 
 // -----------------------------------------------------------------------------
-// Request/Response Types
+// Response Types
 // -----------------------------------------------------------------------------
 
-/// Request body for creating a VMCP server.
-#[derive(Debug, Serialize)]
-struct CreateVmcpRequest {
-    name: String,
-    #[serde(skip_serializing_if = "Option::is_none")]
-    skill_uuid: Option<String>,
-    description: String,
-}
-
-/// Response from skillberry-store POST /vmcp-servers endpoint.
+/// Response from skillberry-store POST /vmcp_servers/ endpoint.
 #[derive(Debug, Deserialize)]
 struct VmcpResponse {
     uuid: String,
@@ -151,14 +142,8 @@ impl VmcpManagerFilter {
         skill_uuid: Option<&str>,
         env_id: &str,
     ) -> Result<VmcpResponse, FilterError> {
-        let url = format!("{}/vmcp-servers", self.store_base_url);
+        let url = format!("{}/vmcp_servers/", self.store_base_url);
         
-        let request_body = CreateVmcpRequest {
-            name: name.to_string(),
-            skill_uuid: skill_uuid.map(String::from),
-            description: format!("VMCP server for environment {}", env_id),
-        };
-
         tracing::debug!(
             vmcp_name = %name,
             skill_uuid = ?skill_uuid,
@@ -167,11 +152,20 @@ impl VmcpManagerFilter {
             "creating VMCP server"
         );
 
+        // Build query parameters
+        let mut query_params = vec![
+            ("name", name.to_string()),
+            ("description", format!("VMCP server for environment {}", env_id)),
+        ];
+        
+        if let Some(uuid) = skill_uuid {
+            query_params.push(("skill_uuid", uuid.to_string()));
+        }
+
         let mut request = self.http_client
             .post(&url)
-            .header("Content-Type", "application/json")
             .header("skillberry-context-env-id", env_id)
-            .json(&request_body);
+            .query(&query_params);
 
         // Add timeout
         request = request.timeout(self.timeout);
