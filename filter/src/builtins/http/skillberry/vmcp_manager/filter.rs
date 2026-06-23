@@ -324,14 +324,17 @@ impl VmcpManagerFilter {
                 FilterError::from(format!("MCP list_tools failed: {e}"))
             })?;
 
-        // Convert MCP tools to JSON values for storage
+        // Convert MCP tools to OpenAI function calling format
         let tools: Vec<serde_json::Value> = tools_result.tools
             .into_iter()
             .map(|tool| {
                 serde_json::json!({
-                    "name": tool.name,
-                    "description": tool.description,
-                    "input_schema": tool.input_schema,
+                    "type": "function",
+                    "function": {
+                        "name": tool.name,
+                        "description": tool.description,
+                        "parameters": tool.input_schema,
+                    }
                 })
             })
             .collect();
