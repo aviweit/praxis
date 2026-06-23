@@ -1,6 +1,4 @@
-# Phase 3: MCP Tools Integration Example
-#
-# This configuration demonstrates the complete integration of Praxis with skillberry-store
+# This configuration demonstrates integration of Praxis with skillberry-store
 # and MCP tools enrichment for AI agent workflows with function calling.
 #
 # Prerequisites:
@@ -8,16 +6,13 @@
 # - OpenAI-compatible LLM backend (LiteLLM, vLLM, etc.) running at localhost:4000
 # - Environment variables set:
 #   - SKILL_UUID or SKILL_NAME: Identifies the skill to use
-#   - OPENAI_API_KEY: Your API key for the LLM backend
-#   - OPENAI_BASE_URL: Your LLM endpoint URL (extract host:port for load_balancer)
 #
 # Filter Flow:
 # 1. context_extractor: Extracts env_id from headers
 # 2. skill_resolver: Resolves skill UUID from environment variables
 # 3. vmcp_manager: Creates VMCP server with context and skill
-# 4. mcp_tools_enricher: Fetches MCP tools and enriches OpenAI request (NEW in Phase 3)
+# 4. mcp_tools_enricher: Fetches MCP tools and enriches OpenAI request
 # 5. router + load_balancer: Routes to OpenAI-compatible LLM backend
-# 6. [Future Phase 4: mcp_tool_invoker for handling tool calls from LLM responses]
 
 listeners:
   - name: skillberry_proxy
@@ -66,7 +61,7 @@ filter_chains:
         always_create: true
         cleanup_on_error: false
       
-      # Step 4: Enrich OpenAI request with MCP tools (NEW in Phase 3)
+      # Step 4: Enrich OpenAI request with MCP tools
       # This filter:
       # - Reads vmcp_port and vmcp_name from filter metadata (set by vmcp_manager)
       # - Connects to VMCP server via MCP protocol over SSE
@@ -110,4 +105,3 @@ runtime:
   threads: 4
   max_connections: 10000
 
-# Made with Bob
