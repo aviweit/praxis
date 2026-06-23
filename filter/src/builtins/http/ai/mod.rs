@@ -14,6 +14,7 @@ pub(crate) mod classifier;
 mod guardrails;
 #[cfg(feature = "ai-inference")]
 mod inference;
+mod mcp_tools_enricher;
 #[cfg(feature = "ai-inference")]
 pub(crate) mod openai;
 #[cfg(feature = "ai-inference")]
@@ -40,6 +41,7 @@ pub use anthropic::AnthropicValidateFilter;
 pub use guardrails::AiGuardrailsFilter;
 #[cfg(feature = "ai-inference")]
 pub use inference::ModelToHeaderFilter;
+pub use mcp_tools_enricher::McpToolsEnricherFilter;
 #[cfg(feature = "ai-inference")]
 pub use openai::OpenaiResponsesValidateFilter;
 #[cfg(feature = "ai-inference")]

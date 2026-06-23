@@ -1,0 +1,113 @@
+# Phase 3: MCP Tools Integration Example
+#
+# This configuration demonstrates the complete integration of Praxis with skillberry-store
+# and MCP tools enrichment for AI agent workflows with function calling.
+#
+# Prerequisites:
+# - skillberry-store running at http://localhost:8000
+# - OpenAI-compatible LLM backend (LiteLLM, vLLM, etc.) running at localhost:4000
+# - Environment variables set:
+#   - SKILL_UUID or SKILL_NAME: Identifies the skill to use
+#   - OPENAI_API_KEY: Your API key for the LLM backend
+#   - OPENAI_BASE_URL: Your LLM endpoint URL (extract host:port for load_balancer)
+#
+# Filter Flow:
+# 1. context_extractor: Extracts env_id from headers
+# 2. skill_resolver: Resolves skill UUID from environment variables
+# 3. vmcp_manager: Creates VMCP server with context and skill
+# 4. mcp_tools_enricher: Fetches MCP tools and enriches OpenAI request (NEW in Phase 3)
+# 5. router + load_balancer: Routes to OpenAI-compatible LLM backend
+# 6. [Future Phase 4: mcp_tool_invoker for handling tool calls from LLM responses]
+
+listeners:
+  - name: skillberry_proxy
+    address: 0.0.0.0:8080
+    filter_chains:
+      - skillberry_chain
+
+filter_chains:
+  - name: skillberry_chain
+    filters:
+      # Step 1: Extract context from headers
+      - filter: context_extractor
+        headers:
+          - name: x-skillberry-env-id
+            metadata_key: env_id
+            default: "default-env"
+            required: true
+            pattern: "^[a-zA-Z0-9_-]+$"
+            max_length: 64
+          
+          - name: x-skillberry-user-id
+            metadata_key: user_id
+            default: "anonymous"
+            required: false
+            pattern: "^[a-zA-Z0-9_-]+$"
+            max_length: 64
+          
+          - name: x-skillberry-session-id
+            metadata_key: session_id
+            required: false
+            pattern: "^[a-zA-Z0-9_-]+$"
+            max_length: 128
+      
+      # Step 2: Resolve skill UUID from environment variables
+      - filter: skill_resolver
+        store_base_url: "http://localhost:8000"
+        skill_uuid_env: "SKILL_UUID"
+        skill_name_env: "SKILL_NAME"
+        timeout_ms: 5000
+      
+      # Step 3: Create VMCP server with context
+      - filter: vmcp_manager
+        store_base_url: "http://localhost:8000"
+        vmcp_name_template: "vmcp-{env_id}"
+        timeout_ms: 10000
+        always_create: true
+        cleanup_on_error: false
+      
+      # Step 4: Enrich OpenAI request with MCP tools (NEW in Phase 3)
+      # This filter:
+      # - Reads vmcp_port and vmcp_name from filter metadata (set by vmcp_manager)
+      # - Connects to VMCP server via MCP protocol over SSE
+      # - Fetches available tools using list_tools()
+      # - Converts MCP tools to OpenAI function calling format
+      # - Enriches the request body with tools array
+      - filter: mcp_tools_enricher
+        timeout_ms: 5000           # Timeout for MCP server connection
+        tool_choice: auto          # Options: auto, required, none
+        max_body_bytes: 10485760   # Max request body size (10MB)
+        on_invalid: continue       # Continue if body is invalid JSON
+      
+      # Future filters (Phase 4+):
+      # - filter: mcp_tool_invoker
+      #   # Handles tool calls from LLM responses
+      #   # Invokes tools on VMCP server
+      #   # Returns results to LLM
+      
+      # NOTE: No credential injection - clients must send Authorization header
+      # Client should send: Authorization: Bearer <your-api-key>
+      #
+      # Router: Forward all requests to LLM backend
+      - filter: router
+        routes:
+          - path_prefix: "/"
+            cluster: llm_backend
+      
+      # Load balancer: Forward to LiteLLM backend
+      # Update endpoint to match your LiteLLM server (hostname:port format)
+      - filter: load_balancer
+        clusters:
+          - name: llm_backend
+            endpoints:
+              - "skillberry-1.vpc.cloud9.ibm.com:4000"
+            connection_timeout_ms: 5000
+            read_timeout_ms: 60000
+            write_timeout_ms: 60000
+
+# Runtime configuration
+runtime:
+  threads: 4
+  max_connections: 10000
+
+# Made with Bob
