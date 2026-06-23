@@ -100,7 +100,7 @@ filter_chains:
         clusters:
           - name: llm_backend
             endpoints:
-              - "skillberry-1.vpc.cloud9.ibm.com:4000"
+              - "localhost:4000"
             connection_timeout_ms: 5000
             read_timeout_ms: 60000
             write_timeout_ms: 60000
