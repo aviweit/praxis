@@ -24,7 +24,7 @@ use std::time::Duration;
 use async_trait::async_trait;
 use bytes::Bytes;
 use mcp_client::{ClientCapabilities, ClientInfo, McpClient, McpClientTrait, McpService, transport::{SseTransport, Transport}};
-use tracing::{debug, warn};
+use tracing::{debug, info, warn};
 
 use self::config::{InvalidBodyBehavior, McpToolsEnricherConfig, validate_config};
 use crate::{
@@ -114,7 +114,43 @@ impl HttpFilter for McpToolsEnricherFilter {
         "mcp_tools_enricher"
     }
 
-    async fn on_request(&self, _ctx: &mut HttpFilterContext<'_>) -> Result<FilterAction, FilterError> {
+    async fn on_request(&self, ctx: &mut HttpFilterContext<'_>) -> Result<FilterAction, FilterError> {
+        info!("mcp_tools_enricher: on_request called");
+        
+        // Get VMCP server details from metadata (set by vmcp_manager)
+        let vmcp_port = match ctx.filter_metadata.get("vmcp_port") {
+            Some(port) => port,
+            None => {
+                info!("mcp_tools_enricher: vmcp_port not found in metadata, skipping tools enrichment");
+                return Ok(FilterAction::Continue);
+            }
+        };
+
+        let vmcp_name = ctx.filter_metadata.get("vmcp_name").map(String::as_str);
+        
+        info!("mcp_tools_enricher: fetching tools from VMCP server port={} name={:?}", vmcp_port, vmcp_name);
+
+        // Fetch tools from VMCP server
+        let tools = match fetch_mcp_tools(vmcp_port, vmcp_name, self.timeout).await {
+            Ok(tools) => tools,
+            Err(e) => {
+                warn!("mcp_tools_enricher: failed to fetch MCP tools from VMCP server: {}", e);
+                // Continue without tools on error
+                return Ok(FilterAction::Continue);
+            }
+        };
+
+        if tools.is_empty() {
+            info!("mcp_tools_enricher: no tools retrieved from VMCP server");
+            return Ok(FilterAction::Continue);
+        }
+
+        info!("mcp_tools_enricher: retrieved {} tools from VMCP server", tools.len());
+        
+        // Store tools in metadata for body enrichment
+        ctx.filter_metadata.insert("mcp_tools".to_string(), serde_json::to_string(&tools).unwrap_or_default());
+        ctx.filter_metadata.insert("mcp_tool_choice".to_string(), self.tool_choice.clone());
+
         Ok(FilterAction::Continue)
     }
 
@@ -142,45 +178,37 @@ impl HttpFilter for McpToolsEnricherFilter {
             return Ok(FilterAction::Continue);
         };
 
-        // Get VMCP server details from metadata
-        let vmcp_port = match ctx.filter_metadata.get("vmcp_port") {
-            Some(port) => port,
-            None => {
-                debug!("vmcp_port not found in metadata, skipping tools enrichment");
+        // Get tools from metadata (set by on_request)
+        let tools_json = match ctx.filter_metadata.get("mcp_tools") {
+            Some(json) => json,
+            None => return Ok(FilterAction::Continue),
+        };
+        
+        let tools: Vec<serde_json::Value> = match serde_json::from_str(tools_json) {
+            Ok(t) => t,
+            Err(e) => {
+                warn!("mcp_tools_enricher: failed to parse tools from metadata: {}", e);
                 return Ok(FilterAction::Continue);
             }
         };
+        
+        let tool_choice = ctx.filter_metadata.get("mcp_tool_choice")
+            .map(String::as_str)
+            .unwrap_or("auto");
 
-        let vmcp_name = ctx.filter_metadata.get("vmcp_name").map(String::as_str);
+        info!("mcp_tools_enricher: enriching request body with {} tools", tools.len());
 
         // Parse the request body
         let mut value: serde_json::Value = match serde_json::from_slice(raw) {
             Ok(v) => v,
             Err(e) => {
-                warn!("Failed to parse request body as JSON: {}", e);
+                warn!("mcp_tools_enricher: failed to parse request body as JSON: {}", e);
                 return Ok(invalid_body_action(self.on_invalid, "invalid JSON body"));
             }
         };
 
-        // Fetch tools from VMCP server
-        let tools = match fetch_mcp_tools(vmcp_port, vmcp_name, self.timeout).await {
-            Ok(tools) => tools,
-            Err(e) => {
-                warn!("Failed to fetch MCP tools from VMCP server: {}", e);
-                // Continue without tools on error
-                return Ok(FilterAction::Continue);
-            }
-        };
-
-        if tools.is_empty() {
-            debug!("No tools retrieved from VMCP server");
-            return Ok(FilterAction::Continue);
-        }
-
-        debug!("Retrieved {} tools from VMCP server", tools.len());
-
         // Enrich the request body with tools
-        enrich_request_with_tools(&mut value, tools, &self.tool_choice)?;
+        enrich_request_with_tools(&mut value, tools, tool_choice)?;
 
         // Serialize the modified body
         let serialized = serde_json::to_vec(&value)
@@ -191,6 +219,8 @@ impl HttpFilter for McpToolsEnricherFilter {
 
         ctx.extra_request_headers
             .push((Cow::Borrowed("content-length"), len.to_string()));
+
+        info!("mcp_tools_enricher: request body enriched successfully");
 
         Ok(FilterAction::Continue)
     }
