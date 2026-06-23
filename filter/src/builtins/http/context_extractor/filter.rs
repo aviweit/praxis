@@ -4,11 +4,13 @@
 //! [`ContextExtractorFilter`] implementation and `HttpFilter` trait impl.
 
 use async_trait::async_trait;
+use bytes::Bytes;
 use regex::Regex;
 
 use super::config::{ContextExtractorConfig, HeaderExtractionRule, ValidationRules};
 use crate::{
     FilterAction, FilterError,
+    body::{BodyAccess, BodyMode},
     factory::parse_filter_config,
     filter::{HttpFilter, HttpFilterContext},
 };
@@ -170,7 +172,32 @@ impl HttpFilter for ContextExtractorFilter {
         "context_extractor"
     }
 
-    async fn on_request(&self, ctx: &mut HttpFilterContext<'_>) -> Result<FilterAction, FilterError> {
+    fn request_body_access(&self) -> BodyAccess {
+        BodyAccess::ReadOnly
+    }
+
+    fn request_body_mode(&self) -> BodyMode {
+        BodyMode::StreamBuffer {
+            max_bytes: Some(10_485_760), // 10MB
+        }
+    }
+
+    async fn on_request_body(
+        &self,
+        ctx: &mut HttpFilterContext<'_>,
+        _body: &mut Option<Bytes>,
+        end_of_stream: bool,
+    ) -> Result<FilterAction, FilterError> {
+        tracing::info!("context_extractor: on_request_body called, end_of_stream={}", end_of_stream);
+        
+        // Wait for complete body before extracting context
+        if !end_of_stream {
+            return Ok(FilterAction::Continue);
+        }
+
+        tracing::info!("context_extractor: processing complete body, extracting headers");
+
+        // Extract headers and store in metadata
         let headers = &ctx.request.headers;
 
         for compiled_rule in &self.rules {
@@ -232,6 +259,11 @@ impl HttpFilter for ContextExtractorFilter {
             ctx.filter_metadata.insert(rule.metadata_key.clone(), value);
         }
 
+        Ok(FilterAction::Continue)
+    }
+
+    async fn on_request(&self, _ctx: &mut HttpFilterContext<'_>) -> Result<FilterAction, FilterError> {
+        // Context extraction now happens in on_request_body
         Ok(FilterAction::Continue)
     }
 }

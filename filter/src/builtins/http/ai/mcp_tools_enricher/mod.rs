@@ -18,13 +18,10 @@ mod config;
 mod tests;
 
 use std::borrow::Cow;
-use std::collections::HashMap;
-use std::time::Duration;
 
 use async_trait::async_trait;
 use bytes::Bytes;
-use mcp_client::{ClientCapabilities, ClientInfo, McpClient, McpClientTrait, McpService, transport::{SseTransport, Transport}};
-use tracing::{debug, info, warn};
+use tracing::{info, warn};
 
 use self::config::{InvalidBodyBehavior, McpToolsEnricherConfig, validate_config};
 use crate::{
@@ -78,9 +75,6 @@ pub struct McpToolsEnricherFilter {
     /// Behavior when the body cannot be enriched.
     on_invalid: InvalidBodyBehavior,
 
-    /// Timeout for MCP server connection.
-    timeout: Duration,
-
     /// Tool choice value to set in the enriched request.
     tool_choice: String,
 }
@@ -102,7 +96,6 @@ impl McpToolsEnricherFilter {
         Ok(Box::new(Self {
             max_body_bytes: cfg.max_body_bytes,
             on_invalid: cfg.on_invalid,
-            timeout: Duration::from_millis(cfg.timeout_ms),
             tool_choice: cfg.tool_choice,
         }))
     }
@@ -114,43 +107,9 @@ impl HttpFilter for McpToolsEnricherFilter {
         "mcp_tools_enricher"
     }
 
-    async fn on_request(&self, ctx: &mut HttpFilterContext<'_>) -> Result<FilterAction, FilterError> {
-        info!("mcp_tools_enricher: on_request called");
-        
-        // Get VMCP server details from metadata (set by vmcp_manager)
-        let vmcp_port = match ctx.filter_metadata.get("vmcp_port") {
-            Some(port) => port,
-            None => {
-                info!("mcp_tools_enricher: vmcp_port not found in metadata, skipping tools enrichment");
-                return Ok(FilterAction::Continue);
-            }
-        };
-
-        let vmcp_name = ctx.filter_metadata.get("vmcp_name").map(String::as_str);
-        
-        info!("mcp_tools_enricher: fetching tools from VMCP server port={} name={:?}", vmcp_port, vmcp_name);
-
-        // Fetch tools from VMCP server
-        let tools = match fetch_mcp_tools(vmcp_port, vmcp_name, self.timeout).await {
-            Ok(tools) => tools,
-            Err(e) => {
-                warn!("mcp_tools_enricher: failed to fetch MCP tools from VMCP server: {}", e);
-                // Continue without tools on error
-                return Ok(FilterAction::Continue);
-            }
-        };
-
-        if tools.is_empty() {
-            info!("mcp_tools_enricher: no tools retrieved from VMCP server");
-            return Ok(FilterAction::Continue);
-        }
-
-        info!("mcp_tools_enricher: retrieved {} tools from VMCP server", tools.len());
-        
-        // Store tools in metadata for body enrichment
-        ctx.filter_metadata.insert("mcp_tools".to_string(), serde_json::to_string(&tools).unwrap_or_default());
-        ctx.filter_metadata.insert("mcp_tool_choice".to_string(), self.tool_choice.clone());
-
+    async fn on_request(&self, _ctx: &mut HttpFilterContext<'_>) -> Result<FilterAction, FilterError> {
+        // Tool fetching is now done by vmcp_manager in body phase
+        // This filter only enriches the body in on_request_body()
         Ok(FilterAction::Continue)
     }
 
@@ -170,15 +129,20 @@ impl HttpFilter for McpToolsEnricherFilter {
         body: &mut Option<Bytes>,
         end_of_stream: bool,
     ) -> Result<FilterAction, FilterError> {
+        info!("mcp_tools_enricher: on_request_body called, end_of_stream={}", end_of_stream);
+        
         if !end_of_stream {
             return Ok(FilterAction::Continue);
         }
 
+        info!("mcp_tools_enricher: processing complete body");
+
         let Some(raw) = body.as_ref() else {
+            info!("mcp_tools_enricher: no body present, skipping");
             return Ok(FilterAction::Continue);
         };
 
-        // Get tools from metadata (set by on_request)
+        // Get tools from metadata (set by vmcp_manager)
         let tools_json = match ctx.filter_metadata.get("mcp_tools") {
             Some(json) => json,
             None => return Ok(FilterAction::Continue),
@@ -191,10 +155,6 @@ impl HttpFilter for McpToolsEnricherFilter {
                 return Ok(FilterAction::Continue);
             }
         };
-        
-        let tool_choice = ctx.filter_metadata.get("mcp_tool_choice")
-            .map(String::as_str)
-            .unwrap_or("auto");
 
         info!("mcp_tools_enricher: enriching request body with {} tools", tools.len());
 
@@ -208,7 +168,7 @@ impl HttpFilter for McpToolsEnricherFilter {
         };
 
         // Enrich the request body with tools
-        enrich_request_with_tools(&mut value, tools, tool_choice)?;
+        enrich_request_with_tools(&mut value, tools, &self.tool_choice)?;
 
         // Serialize the modified body
         let serialized = serde_json::to_vec(&value)
@@ -230,114 +190,6 @@ impl HttpFilter for McpToolsEnricherFilter {
 // Private Utilities
 // -----------------------------------------------------------------------------
 
-/// Fetch MCP tools from the VMCP server via SSE.
-///
-/// Connects to the VMCP server using the MCP protocol over SSE transport,
-/// calls list_tools(), and converts the tools to OpenAI function calling format.
-async fn fetch_mcp_tools(
-    vmcp_port: &str,
-    vmcp_name: Option<&str>,
-    timeout: Duration,
-) -> Result<Vec<serde_json::Value>, FilterError> {
-    debug!(
-        "Fetching tools from VMCP server at port {} (name: {:?})",
-        vmcp_port, vmcp_name
-    );
-    
-    // Build SSE endpoint URL
-    let sse_url = format!("http://localhost:{}/sse", vmcp_port);
-    
-    // Create SSE transport with empty environment
-    let env = HashMap::new();
-    let transport = SseTransport::new(&sse_url, env);
-    
-    // Start the transport to get a handle
-    let transport_handle = transport.start()
-        .await
-        .map_err(|e| -> FilterError {
-            format!("Failed to start SSE transport: {}", e).into()
-        })?;
-    
-    // Create MCP service from transport handle
-    let service = McpService::new(transport_handle);
-    
-    // Create MCP client
-    let mut client = McpClient::new(service);
-    
-    // Prepare client info
-    let client_info = ClientInfo {
-        name: "praxis-mcp-tools-enricher".to_string(),
-        version: env!("CARGO_PKG_VERSION").to_string(),
-    };
-    
-    let capabilities = ClientCapabilities::default();
-    
-    // Initialize the connection with timeout
-    let init_result = tokio::time::timeout(timeout, client.initialize(client_info, capabilities))
-        .await
-        .map_err(|_| -> FilterError { "MCP initialization timeout".into() })?
-        .map_err(|e| -> FilterError {
-            format!("MCP initialization failed: {}", e).into()
-        })?;
-    
-    debug!("MCP client initialized: server={}, version={}",
-           init_result.server_info.name,
-           init_result.server_info.version);
-    
-    // List available tools
-    let tools_result = tokio::time::timeout(timeout, client.list_tools(None))
-        .await
-        .map_err(|_| -> FilterError { "MCP list_tools timeout".into() })?
-        .map_err(|e| -> FilterError {
-            format!("MCP list_tools failed: {}", e).into()
-        })?;
-    
-    debug!("Retrieved {} tools from MCP server", tools_result.tools.len());
-    
-    // Convert MCP tools to OpenAI format
-    let openai_tools: Vec<serde_json::Value> = tools_result
-        .tools
-        .into_iter()
-        .map(|tool| convert_mcp_tool_to_openai(tool, vmcp_name))
-        .collect();
-    
-    Ok(openai_tools)
-}
-
-/// Convert an MCP tool to OpenAI function calling format.
-///
-/// MCP tools have a schema that needs to be mapped to OpenAI's function format:
-/// ```json
-/// {
-///   "type": "function",
-///   "function": {
-///     "name": "tool_name",
-///     "description": "tool description",
-///     "parameters": { ... }
-///   }
-/// }
-/// ```
-fn convert_mcp_tool_to_openai(
-    tool: mcp_spec::tool::Tool,
-    vmcp_name: Option<&str>,
-) -> serde_json::Value {
-    // Build function name with optional VMCP prefix
-    let function_name = if let Some(name) = vmcp_name {
-        format!("{}_{}", name, tool.name)
-    } else {
-        tool.name.clone()
-    };
-    
-    serde_json::json!({
-        "type": "function",
-        "function": {
-            "name": function_name,
-            "description": tool.description,
-            "parameters": tool.input_schema
-        }
-    })
-}
-
 /// Enrich the request body with MCP tools.
 ///
 /// Adds or merges the tools array and sets tool_choice if not already present.
@@ -357,7 +209,7 @@ fn enrich_request_with_tools(
             // Merge with existing tools
             if let Some(existing_array) = existing_tools.as_array_mut() {
                 existing_array.extend(tools);
-                debug!("Merged {} MCP tools with existing tools", tools_count);
+                info!("Merged {} MCP tools with existing tools", tools_count);
             } else {
                 warn!("Existing 'tools' field is not an array, replacing it");
                 obj.insert("tools".to_owned(), serde_json::Value::Array(tools));
@@ -366,7 +218,7 @@ fn enrich_request_with_tools(
         None => {
             // Add new tools array
             obj.insert("tools".to_owned(), serde_json::Value::Array(tools));
-            debug!("Added {} MCP tools to request", tools_count);
+            info!("Added {} MCP tools to request", tools_count);
         }
     }
 
@@ -376,7 +228,7 @@ fn enrich_request_with_tools(
             "tool_choice".to_owned(),
             serde_json::Value::String(tool_choice.to_owned()),
         );
-        debug!("Set tool_choice to '{}'", tool_choice);
+        info!("Set tool_choice to '{}'", tool_choice);
     }
 
     Ok(())
